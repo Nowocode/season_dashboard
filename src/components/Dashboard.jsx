@@ -243,8 +243,8 @@ const FeedbackList = ({ feedbacks, loading, onToggleAvailable, onEdit, onDelete 
                     className={`glass-card card-flex animate-fade delay-${(idx % 5) + 1}`}
                 >
                     <div style={{ flex: 1 }}>
-                        <h3 style={{ margin: 0 }}>{f.title}</h3>
-                        <p style={{ margin: '0.5rem 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{f.description}</p>
+                        <h3 style={{ margin: 0 }}>{f.title_en}</h3>
+                        <p style={{ margin: '0.5rem 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{f.description_en}</p>
                         <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', alignItems: 'center' }}>
                             <span>{f.questions?.length || 0} Questions</span>
                             {f.isAvailable && <span className="badge badge-success"><CheckCircle2 size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Active</span>}
@@ -313,7 +313,7 @@ const ResponseCard = ({ response: r, idx }) => {
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontWeight: 600 }}>{r.email}</span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : 'Just now'}
+                        {r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : ''}
                     </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -392,18 +392,42 @@ const ResponseList = ({ responses, loading }) => {
 
 const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
     const isEdit = !!initialData;
-    const [title, setTitle] = useState(initialData?.title || '');
-    const [description, setDescription] = useState(initialData?.description || '');
-    const [questions, setQuestions] = useState(initialData?.questions || [
-        { id: Date.now().toString(), questionText: '', type: 'free_text', options: [] }
-    ]);
+    const [titleEn, setTitleEn] = useState(initialData?.title_en || initialData?.title || '');
+    const [titleDe, setTitleDe] = useState(initialData?.title_de || '');
+    const [descriptionEn, setDescriptionEn] = useState(initialData?.description_en || initialData?.description || '');
+    const [descriptionDe, setDescriptionDe] = useState(initialData?.description_de || '');
+
+    // Map initial questions to new structure if needed
+    const [questions, setQuestions] = useState(() => {
+        if (initialData?.questions) {
+            return initialData.questions.map(q => ({
+                ...q,
+                questionText_en: q.questionText_en || q.questionText || '',
+                questionText_de: q.questionText_de || '',
+                options_en: q.options_en || q.options || [],
+                options_de: q.options_de || (q.options ? new Array(q.options.length).fill('') : []), // Fallback to empty strings if migrating
+            }));
+        }
+        return [{
+            id: Date.now().toString(),
+            questionText_en: '',
+            questionText_de: '',
+            type: 'free_text',
+            includeText: false,
+            options_en: [],
+            options_de: []
+        }];
+    });
 
     const addQuestion = () => {
         setQuestions([...questions, {
             id: Date.now().toString(),
-            questionText: '',
+            questionText_en: '',
+            questionText_de: '',
             type: 'free_text',
-            options: []
+            includeText: false,
+            options_en: [],
+            options_de: []
         }]);
     };
 
@@ -412,25 +436,43 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
     };
 
     const handleQuestionChange = (id, field, value) => {
-        setQuestions(questions.map(q => q.id === id ? { ...q, [field]: value } : q));
+        setQuestions(questions.map(q => {
+            if (q.id !== id) return q;
+
+            if (field === 'type' && value === 'yes_no_text') {
+                return {
+                    ...q,
+                    [field]: value,
+                    includeText: false,
+                    options_en: ['Yes', 'No'],
+                    options_de: ['Ja', 'Nein']
+                };
+            }
+
+            return { ...q, [field]: value };
+        }));
     };
 
     const addOption = (questionId) => {
         setQuestions(questions.map(q => {
             if (q.id === questionId) {
-                const options = q.options || [];
-                return { ...q, options: [...options, ''] };
+                return {
+                    ...q,
+                    options_en: [...(q.options_en || []), ''],
+                    options_de: [...(q.options_de || []), '']
+                };
             }
             return q;
         }));
     };
 
-    const handleOptionChange = (questionId, optionIdx, value) => {
+    const handleOptionChange = (questionId, optionIdx, value, lang) => {
         setQuestions(questions.map(q => {
             if (q.id === questionId) {
-                const newOptions = [...q.options];
+                const key = lang === 'en' ? 'options_en' : 'options_de';
+                const newOptions = [...q[key]];
                 newOptions[optionIdx] = value;
-                return { ...q, options: newOptions };
+                return { ...q, [key]: newOptions };
             }
             return q;
         }));
@@ -439,8 +481,9 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
     const removeOption = (questionId, optionIdx) => {
         setQuestions(questions.map(q => {
             if (q.id === questionId) {
-                const newOptions = q.options.filter((_, idx) => idx !== optionIdx);
-                return { ...q, options: newOptions };
+                const newOptionsEn = q.options_en.filter((_, idx) => idx !== optionIdx);
+                const newOptionsDe = q.options_de.filter((_, idx) => idx !== optionIdx);
+                return { ...q, options_en: newOptionsEn, options_de: newOptionsDe };
             }
             return q;
         }));
@@ -449,9 +492,19 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const feedbackData = {
-            title,
-            description,
-            questions: questions.filter(q => q.questionText.trim())
+            title_en: titleEn,
+            title_de: titleDe,
+            description_en: descriptionEn,
+            description_de: descriptionDe,
+            questions: questions.filter(q => q.questionText_en.trim()).map(q => ({
+                id: q.id,
+                type: q.type,
+                questionText_en: q.questionText_en,
+                questionText_de: q.questionText_de,
+                includeText: q.type === 'yes_no_text' ? !!q.includeText : false,
+                options_en: q.options_en,
+                options_de: q.options_de
+            }))
         };
 
         if (isEdit) {
@@ -463,37 +516,65 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="glass-card animate-fade" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <form onSubmit={handleSubmit} className="glass-card animate-fade" style={{ maxWidth: '900px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ margin: 0 }}>{isEdit ? 'Edit Feedback' : 'Create New Feedback'}</h2>
+                <h2 style={{ margin: 0 }}>{isEdit ? 'Edit Feedback (EN/DE)' : 'Create New Feedback (EN/DE)'}</h2>
                 <button type="button" className="btn btn-ghost" onClick={onCancel}>
                     <X size={20} />
                 </button>
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Title</label>
-                <input
-                    className="input"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Summer Product Survey"
-                    required
-                />
+            {/* Title Section */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Title (English)</label>
+                    <input
+                        className="input"
+                        value={titleEn}
+                        onChange={(e) => setTitleEn(e.target.value)}
+                        placeholder="e.g., Summer Survey"
+                        required
+                    />
+                </div>
+                <div>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Title (German)</label>
+                    <input
+                        className="input"
+                        value={titleDe}
+                        onChange={(e) => setTitleDe(e.target.value)}
+                        placeholder="z.B. Sommer Umfrage"
+                        required
+                    />
+                </div>
             </div>
 
-            <div style={{ marginBottom: '2rem' }}>
-                <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Description</label>
-                <textarea
-                    className="input"
-                    style={{ height: '80px', resize: 'none' }}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="What is this survey about?"
-                    required
-                />
+            {/* Description Section */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+                <div>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Description (English)</label>
+                    <textarea
+                        className="input"
+                        style={{ height: '80px', resize: 'none' }}
+                        value={descriptionEn}
+                        onChange={(e) => setDescriptionEn(e.target.value)}
+                        placeholder="Survey description..."
+                        required
+                    />
+                </div>
+                <div>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Description (German)</label>
+                    <textarea
+                        className="input"
+                        style={{ height: '80px', resize: 'none' }}
+                        value={descriptionDe}
+                        onChange={(e) => setDescriptionDe(e.target.value)}
+                        placeholder="Umfrage Beschreibung..."
+                        required
+                    />
+                </div>
             </div>
 
+            {/* Questions Section */}
             <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Questions</h3>
@@ -505,45 +586,86 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
                 <div style={{ display: 'grid', gap: '1.5rem' }}>
                     {questions.map((q, idx) => (
                         <div key={q.id} className="glass-card" style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Question Text</label>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'flex-start' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--primary)', marginTop: '0.5rem' }}>Question #{idx + 1}</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <div style={{ width: '180px' }}>
+                                            <select
+                                                className="input"
+                                                value={q.type}
+                                                onChange={(e) => handleQuestionChange(q.id, 'type', e.target.value)}
+                                                style={{ padding: '0.4rem', marginBottom: 0 }}
+                                            >
+                                                <option value="free_text">Free Text</option>
+                                                <option value="multiple_choice">Multiple Choice</option>
+                                                <option value="yes_no_text">Yes/No</option>
+                                            </select>
+                                        </div>
+                                        <button type="button" className="btn btn-ghost" onClick={() => removeQuestion(q.id)} style={{ padding: '0.5rem' }}>
+                                            <Trash2 size={16} color="#ef4444" />
+                                        </button>
+                                    </div>
+                                    {q.type === 'yes_no_text' && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Include Text Field</span>
+                                            <label className="switch">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={q.includeText}
+                                                    onChange={(e) => handleQuestionChange(q.id, 'includeText', e.target.checked)}
+                                                />
+                                                <span className="slider"></span>
+                                            </label>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Question (EN)</label>
                                     <input
                                         className="input"
-                                        value={q.questionText}
-                                        onChange={(e) => handleQuestionChange(q.id, 'questionText', e.target.value)}
-                                        placeholder={`Question ${idx + 1}`}
+                                        value={q.questionText_en}
+                                        onChange={(e) => handleQuestionChange(q.id, 'questionText_en', e.target.value)}
+                                        placeholder="Question in English"
                                         required
                                     />
                                 </div>
-                                <div style={{ width: '180px' }}>
-                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Type</label>
-                                    <select
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Question (DE)</label>
+                                    <input
                                         className="input"
-                                        value={q.type}
-                                        onChange={(e) => handleQuestionChange(q.id, 'type', e.target.value)}
-                                    >
-                                        <option value="free_text">Free Text</option>
-                                        <option value="multiple_choice">Multiple Choice</option>
-                                        <option value="yes_no_text">Yes/No</option>
-                                    </select>
+                                        value={q.questionText_de}
+                                        onChange={(e) => handleQuestionChange(q.id, 'questionText_de', e.target.value)}
+                                        placeholder="Frage auf Deutsch"
+                                        required
+                                    />
                                 </div>
-                                <button type="button" className="btn btn-ghost" onClick={() => removeQuestion(q.id)} style={{ alignSelf: 'flex-end', padding: '0.75rem' }}>
-                                    <Trash2 size={16} color="#ef4444" />
-                                </button>
                             </div>
 
-                            {q.type === 'multiple_choice' && (
+                            {(q.type === 'multiple_choice' || q.type === 'yes_no_text') && (
                                 <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}>
-                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Options</label>
-                                    {q.options?.map((opt, optIdx) => (
-                                        <div key={optIdx} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                                        {q.type === 'yes_no_text' ? 'Options (Yes/No)' : 'Options (EN / DE)'}
+                                    </label>
+                                    {q.options_en?.map((opt, optIdx) => (
+                                        <div key={optIdx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
                                             <input
                                                 className="input"
                                                 style={{ padding: '0.4rem' }}
                                                 value={opt}
-                                                onChange={(e) => handleOptionChange(q.id, optIdx, e.target.value)}
-                                                placeholder={`Option ${optIdx + 1}`}
+                                                onChange={(e) => handleOptionChange(q.id, optIdx, e.target.value, 'en')}
+                                                placeholder={`Option ${optIdx + 1} (EN)`}
+                                                required
+                                            />
+                                            <input
+                                                className="input"
+                                                style={{ padding: '0.4rem' }}
+                                                value={q.options_de?.[optIdx] || ''}
+                                                onChange={(e) => handleOptionChange(q.id, optIdx, e.target.value, 'de')}
+                                                placeholder={`Option ${optIdx + 1} (DE)`}
                                                 required
                                             />
                                             <button type="button" className="btn btn-ghost" onClick={() => removeOption(q.id, optIdx)} style={{ padding: '0.4rem' }}>
@@ -552,7 +674,7 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
                                         </div>
                                     ))}
                                     <button type="button" className="btn btn-ghost" onClick={() => addOption(q.id)} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
-                                        + Add Option
+                                        + Add Option pair
                                     </button>
                                 </div>
                             )}
