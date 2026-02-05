@@ -81,15 +81,4 @@ export const feedbackService = {
         console.log("Responses fetched:", data);
         return data;
     },
-
-    // Get all bug reports
-    async getBugReports() {
-        const BUG_REPORT_COLLECTION = "bug_report";
-        console.log("Fetching bug reports from collection:", BUG_REPORT_COLLECTION);
-        const q = query(collection(db, BUG_REPORT_COLLECTION));
-        const querySnapshot = await getDocs(q);
-        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        console.log("Bug reports fetched:", data);
-        return data;
-    }
 };

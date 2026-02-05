@@ -5,8 +5,6 @@ import {
     ClipboardList,
     CheckCircle2,
     Edit2,
-    Bug,
-    AlertCircle,
     X,
     ChevronDown,
     ChevronUp,
@@ -18,10 +16,9 @@ import { feedbackService } from '../services/feedbackService.jsx';
 import { authService } from '../services/authService.jsx';
 
 const Dashboard = () => {
-    const [activeTab, setActiveTab] = useState('feedbacks'); // 'feedbacks', 'responses', 'create', 'bugs'
+    const [activeTab, setActiveTab] = useState('feedbacks'); // 'feedbacks', 'responses', 'create'
     const [feedbacks, setFeedbacks] = useState([]);
     const [responses, setResponses] = useState([]);
-    const [bugReports, setBugReports] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingFeedback, setEditingFeedback] = useState(null);
 
@@ -30,15 +27,9 @@ const Dashboard = () => {
         // Also fetch other collections to keep stats accurate
         if (activeTab === 'feedbacks') {
             fetchResponsesOnly();
-            fetchBugReportsOnly();
         }
         if (activeTab === 'responses') {
             fetchFeedbacksOnly();
-            fetchBugReportsOnly();
-        }
-        if (activeTab === 'bugs') {
-            fetchFeedbacksOnly();
-            fetchResponsesOnly();
         }
     }, [activeTab]);
 
@@ -56,13 +47,6 @@ const Dashboard = () => {
         } catch (e) { }
     };
 
-    const fetchBugReportsOnly = async () => {
-        try {
-            const data = await feedbackService.getBugReports();
-            setBugReports(data);
-        } catch (e) { }
-    };
-
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -75,9 +59,6 @@ const Dashboard = () => {
                 const data = await feedbackService.getResponses();
                 console.log("Setting responses state:", data);
                 setResponses(data);
-            } else if (activeTab === 'bugs') {
-                const data = await feedbackService.getBugReports();
-                setBugReports(data);
             }
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -144,13 +125,6 @@ const Dashboard = () => {
                     <span className="stat-value">{responses.length}</span>
                     <span className="stat-label">Total Responses</span>
                 </div>
-                <div className="glass-card stat-card animate-fade delay-3">
-                    <div style={{ color: '#fbbf24', marginBottom: '0.5rem' }}>
-                        <Bug size={32} />
-                    </div>
-                    <span className="stat-value">{bugReports.length}</span>
-                    <span className="stat-label">Bug Reports</span>
-                </div>
             </div>
 
             <nav className="glass-card nav-wrap animate-fade delay-4">
@@ -165,12 +139,6 @@ const Dashboard = () => {
                     onClick={() => setActiveTab('responses')}
                 >
                     <ClipboardList size={18} /> Responses
-                </button>
-                <button
-                    className={`btn btn-ghost ${activeTab === 'bugs' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('bugs')}
-                >
-                    <Bug size={18} /> Bug Reports
                 </button>
                 <div className="flex-spacer"></div>
                 <button
@@ -200,9 +168,6 @@ const Dashboard = () => {
                 )}
                 {activeTab === 'responses' && (
                     <ResponseList responses={responses} loading={loading} />
-                )}
-                {activeTab === 'bugs' && (
-                    <BugReportList reports={bugReports} loading={loading} />
                 )}
                 {activeTab === 'create' && (
                     <FeedbackForm
@@ -689,37 +654,6 @@ const FeedbackForm = ({ initialData, onSuccess, onCancel }) => {
                 </button>
             </div>
         </form>
-    );
-};
-
-const BugReportList = ({ reports, loading }) => {
-    if (loading) return <div className="animate-fade">Loading bug reports...</div>;
-
-    if (reports.length === 0) {
-        return (
-            <div className="glass-card animate-fade" style={{ textAlign: 'center', padding: '3rem' }}>
-                <AlertCircle size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-                <p style={{ color: 'var(--text-muted)' }}>No bug reports found.</p>
-            </div>
-        );
-    }
-
-    return (
-        <div style={{ display: 'grid', gap: '1.25rem' }}>
-            {reports.map((r, idx) => (
-                <div key={r.id} className={`glass-card animate-fade delay-${(idx % 5) + 1}`}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-                        <span style={{ fontWeight: 600 }}>{r.email}</span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            ID: {r.id}
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1rem', color: 'var(--text)', lineHeight: '1.5' }}>
-                        {r.bug}
-                    </div>
-                </div>
-            ))}
-        </div>
     );
 };
 
