@@ -8,6 +8,7 @@ import {
     X,
     ChevronDown,
     ChevronUp,
+    ChevronRight,
     LogOut,
     Trash2
 } from 'lucide-react';
@@ -167,7 +168,7 @@ const Dashboard = () => {
                     />
                 )}
                 {activeTab === 'responses' && (
-                    <ResponseList responses={responses} loading={loading} />
+                    <ResponseList responses={responses} feedbacks={feedbacks} loading={loading} />
                 )}
                 {activeTab === 'create' && (
                     <FeedbackForm
@@ -278,7 +279,11 @@ const ResponseCard = ({ response: r, idx }) => {
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontWeight: 600 }}>{r.email}</span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : ''}
+                        {r.answeredAt ? (
+                            new Date(r.answeredAt).toLocaleString()
+                        ) : r.createdAt?.toDate ? (
+                            r.createdAt.toDate().toLocaleString()
+                        ) : 'No date'}
                     </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -334,7 +339,10 @@ const ResponseCard = ({ response: r, idx }) => {
     );
 };
 
-const ResponseList = ({ responses, loading }) => {
+const ResponseList = ({ responses, feedbacks, loading }) => {
+    const [expandedFeedbacks, setExpandedFeedbacks] = useState({});
+    const [expandedEmails, setExpandedEmails] = useState({});
+
     if (loading) return <div className="animate-fade">Loading responses...</div>;
 
     if (responses.length === 0) {
@@ -346,11 +354,116 @@ const ResponseList = ({ responses, loading }) => {
         );
     }
 
+    // Toggle feedback group
+    const toggleFeedback = (fid) => {
+        setExpandedFeedbacks(prev => ({ ...prev, [fid]: !prev[fid] }));
+    };
+
+    // Toggle email group (context-aware key)
+    const toggleEmail = (fid, email) => {
+        const key = `${fid}-${email}`;
+        setExpandedEmails(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    // 1. Sort all responses by answeredAt (oldest first)
+    const sortedResponses = [...responses].sort((a, b) => {
+        const dateA = a.answeredAt ? new Date(a.answeredAt) : null;
+        const dateB = b.answeredAt ? new Date(b.answeredAt) : null;
+        if (dateA && dateB) return dateA - dateB;
+        if (dateA) return -1;
+        if (dateB) return 1;
+        return 0;
+    });
+
+    // 2. Group by feedbackId
+    const feedbackGroups = sortedResponses.reduce((acc, r) => {
+        const fid = r.feedbackId || 'unknown';
+        if (!acc[fid]) acc[fid] = [];
+        acc[fid].push(r);
+        return acc;
+    }, {});
+
     return (
-        <div style={{ display: 'grid', gap: '1.25rem' }}>
-            {responses.map((r, idx) => (
-                <ResponseCard response={r} idx={idx} key={r.id} />
-            ))}
+        <div style={{ display: 'grid', gap: '1.5rem' }}>
+            {Object.entries(feedbackGroups).map(([fid, fResponses]) => {
+                const feedback = feedbacks.find(f => f.id === fid);
+                const feedbackTitle = feedback?.title_en || (fid === 'unknown' ? 'Unknown Feedback' : `Feedback ID: ${fid}`);
+                const isFExpanded = !!expandedFeedbacks[fid];
+
+                // 3. Group by email within each feedback group
+                const emailGroups = fResponses.reduce((acc, r) => {
+                    const email = r.email || 'Anonymous';
+                    if (!acc[email]) acc[email] = [];
+                    acc[email].push(r);
+                    return acc;
+                }, {});
+
+                return (
+                    <div key={fid} className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+                        <div
+                            onClick={() => toggleFeedback(fid)}
+                            style={{
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1rem',
+                                cursor: 'pointer',
+                                background: isFExpanded ? 'rgba(var(--primary-rgb), 0.05)' : 'transparent',
+                                borderBottom: isFExpanded ? '1px solid var(--border)' : 'none',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {isFExpanded ? <ChevronUp size={20} color="var(--primary)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
+                            <div style={{ flex: 1 }}>
+                                <h2 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 700 }}>{feedbackTitle}</h2>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fResponses.length} total responses</span>
+                            </div>
+                        </div>
+
+                        {isFExpanded && (
+                            <div className="animate-fade" style={{ padding: '1rem' }}>
+                                <div style={{ display: 'grid', gap: '1rem' }}>
+                                    {Object.entries(emailGroups).map(([email, userResponses]) => {
+                                        const emailKey = `${fid}-${email}`;
+                                        const isEExpanded = !!expandedEmails[emailKey];
+
+                                        return (
+                                            <div key={email} style={{ border: '1px solid var(--border)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+                                                <div
+                                                    onClick={() => toggleEmail(fid, email)}
+                                                    style={{
+                                                        padding: '0.75rem 1rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.75rem',
+                                                        cursor: 'pointer',
+                                                        background: 'rgba(255,255,255,0.02)',
+                                                        transition: 'background 0.2s ease'
+                                                    }}
+                                                >
+                                                    {isEExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} color="var(--text-muted)" />}
+                                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', flex: 1 }}>{email}</span>
+                                                    <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>{userResponses.length}</span>
+                                                </div>
+
+                                                {isEExpanded && (
+                                                    <div className="animate-fade" style={{ padding: '0.75rem', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.1)' }}>
+                                                        <div style={{ display: 'grid', gap: '0.75rem' }}>
+                                                            {userResponses.map((r, idx) => (
+                                                                <ResponseCard response={r} idx={idx} key={r.id} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 };
